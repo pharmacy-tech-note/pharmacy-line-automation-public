@@ -2,51 +2,149 @@
 
 ## このStepで実現すること
 
-①に画像保存を追加します。LINEで届いた受付画像をDriveの指定フォルダへ保管できるようにします。
+Step ①では、LINEからの通知をGASで受け取るところまで作成しました。
+
+今回は、LINEから送られた画像を取得し、Google Driveの指定フォルダに保存する機能を追加します。
+
+これで、LINEに写真を送ると、Google Driveに画像ファイルが作成されるようになります。
 
 ## 関数の役割
 
 | 関数 | 役割 |
 | --- | --- |
-| saveImageToDrive(messageId) | LINEから画像データを取得し、Google Driveの指定フォルダに保存する関数です。受付画像をファイルとして保管します。 |
-
-前のStepのdoPostとcreateResponseを含みます。
+| `doPost(e)` | LINEから通知を受け取り、画像メッセージかどうかを確認します。 |
+| `saveImageToDrive(messageId)` | LINEから画像データを取得し、Google Driveに保存します。 |
+| `createResponse(msg)` | LINEサーバーへHTTP応答を返します。 |
 
 ## 主要な処理の読み方
 
-`PropertiesService.getScriptProperties()` で設定を読み、LINE_ACCESS_TOKENとFOLDER_IDを使います。`for (const event of events)` で届いた出来事を順に調べ、画像メッセージの場合にmessageIdを取り出します。
+### ① LINEから届いたメッセージを確認する
 
-`saveImageToDrive(messageId)` はLINE Content API（送信された画像を取得する窓口）へアクセスします。`Authorization: Bearer ...` にアクセストークンを付け、`response.getBlob()` でファイルとして扱うデータを取り出します。
+`doPost(e)` は、Step ①から引き継いだ関数です。
 
-`Utilities.formatDate()` とmessageIdで `rx_yyyyMMdd_HHmmss_メッセージID.jpg` という名前を付けます。`DriveApp.getFolderById(FOLDER_ID)` が保存先を選び、`folder.createFile(imageBlob)` がファイルを作ります。処理中の例外は既存のtry/catchで受け、内部処理エラーのログに記録します。
+LINEから通知が届くと、受信データの中に画像メッセージがあるか調べます。
+
+```javascript
+for (const event of events)
+```
+
+この処理は、LINEから届いたイベントを順番に調べるためのものです。
+
+画像メッセージが見つかると、画像を識別する `messageId` を取得し、保存処理へ進みます。
+
+### ② LINEから画像を取得する
+
+`saveImageToDrive(messageId)` が、今回追加した中心となる関数です。
+
+LINEから届くWebhookには、画像そのものではなく、画像を識別するための情報が含まれています。
+
+そのため、GASからLINEのContent APIにアクセスして、画像データを取得します。
+
+ここで使用するのが `LINE_ACCESS_TOKEN` です。
+
+アクセストークンは、GASがLINEのAPIを利用する際の認証情報になります。
+
+### ③ Google Driveへ保存する
+
+取得した画像は `response.getBlob()` でファイルとして扱えるデータにします。
+
+続いて、`DriveApp.getFolderById(FOLDER_ID)` で保存先のフォルダを指定します。
+
+最後に `folder.createFile(imageBlob)` で画像ファイルを作成します。
+
+ファイル名は次の形式です。
+
+`rx_年月日_時分秒_メッセージID.jpg`
+
+送られた画像を区別できるよう、日時とメッセージIDを付けています。
 
 ## 必要な設定
 
+Step ②では、GASに次の2つの設定を追加します。
+
 | 設定名 | 内容 |
 | --- | --- |
-| LINE_ACCESS_TOKEN | 対象LINEチャネルのアクセストークン。画像取得時の認証に使います。 |
-| FOLDER_ID | Google Driveの画像保存先フォルダのIDです。 |
+| `LINE_ACCESS_TOKEN` | LINE Messaging APIのチャネルアクセストークン |
+| `FOLDER_ID` | Google Driveの画像保存先フォルダID |
 
-## 登録と操作
+### LINE_ACCESS_TOKENの取得
 
-1. [共通手順](../README.md#アカウントと準備)でGoogle・LINEとGASプロジェクトを準備します。
-2. [Code.gs](Code.gs)の全文をGASへ貼り付けます。前のStepを使っていた場合はコード全体を置き換えます。
-3. 上記の設定値を「プロジェクトの設定」→「スクリプト プロパティ」に登録します。①では登録不要です。
-4. doPostをエディタから実行し、権限の認可画面が出たら確認して許可します。
-5. 初回は「デプロイ」→「新しいデプロイ」→「ウェブアプリ」、実行ユーザー「自分」、アクセス「全員」で登録します。更新時は「デプロイを管理」→編集→「新バージョン」で反映します。
-6. LINE DevelopersのWebhook URLへ /exec のURLを登録し、Webhook利用を有効にします。同じデプロイを更新した場合は登録済みURLを使います。詳しくは[共通手順](../README.md#初回デプロイ)を参照します。
+1. LINE Developersにログインします。
+2. 対象のプロバイダーとMessaging APIチャネルを開きます。
+3. Messaging API設定でチャネルアクセストークンを確認します。
+4. 必要に応じて発行し、コピーします。
+
+### FOLDER_IDの取得
+
+Google Driveで、画像を保存するフォルダを開きます。
+
+ブラウザのアドレス欄には、次のようなURLが表示されます。
+
+`https://drive.google.com/drive/folders/フォルダID`
+
+`folders/` より後ろの文字列がフォルダIDです。
+
+これをコピーします。
+
+### GASへの設定
+
+1. GASの画面を開きます。
+2. 左側の歯車マーク「プロジェクトの設定」を選択します。
+3. 「スクリプト プロパティ」から設定を追加します。
+4. `LINE_ACCESS_TOKEN` にアクセストークンを登録します。
+5. `FOLDER_ID` に保存先のフォルダIDを登録します。
+6. 設定を保存します。
+
+設定名は大文字・小文字も含めて、コードと一致させてください。
+
+## コードの登録
+
+1. [Step ②のCode.gs](Code.gs)を開きます。
+2. コード全文をコピーします。
+3. GASの `コード.gs` に貼り付け、Step ①のコード全体を置き換えます。
+4. 保存ボタンを押します。
+
+Step ②のコードには、Step ①の機能も含まれています。
+
+## デプロイの更新
+
+Step ①で作成したWebアプリを更新します。
+
+1. GAS画面の「デプロイ」から「デプロイを管理」を選択します。
+2. 使用中のWebアプリを選択します。
+3. 編集アイコンを押します。
+4. バージョンで「新バージョン」を選択します。
+5. 「デプロイ」を押します。
+
+同じデプロイを更新した場合、Webhook URLを新しく登録し直す必要はありません。
+
+画像保存に必要なGoogle Driveなどのアクセス権限が求められた場合は、内容を確認して承認します。
 
 ## 動作確認
 
-1. 「テスト」と書いた画像をLINEへ1枚送ります。
-2. GASで「正常に処理完了: メッセージID …」を確認します。
-3. 指定Driveフォルダにrx_で始まるファイルが作られ、画像を開けることを確認します。
-4. テキストやスタンプを送り、画像保存処理が実行されないことを確認します。
+1. LINEのWebhookを有効にします。
+2. LINE公式アカウントへテスト用の画像を1枚送信します。
+3. GASの「実行数」で `doPost` の実行履歴を確認します。
+4. Google Driveの指定フォルダを開きます。
+5. `rx_` から始まる画像ファイルが作成されていることを確認します。
+6. 保存された画像を開き、送った画像と一致していることを確認します。
 
-## エラー時の確認箇所
+画像が正常に保存されていれば、Step ②は完成です。
 
-設定不足の警告ではLINE_ACCESS_TOKENとFOLDER_IDを確認します。「内部処理エラー」ではログに表示された例外を読み、DriveのフォルダID、保存権限、空き容量や通信状態を確認します。
+## うまく動かない場合
 
-## 次へ
+画像が保存されない場合は、次の項目を確認します。
 
-[③ PCへの通知](../step03-pc-notification/README.md)へ進みます。
+- `LINE_ACCESS_TOKEN` が正しく登録されているか。
+- `FOLDER_ID` が正しい保存先フォルダを指しているか。
+- GASを実行するGoogleアカウントにフォルダへの保存権限があるか。
+- コードを変更した後、新しいバージョンでデプロイしたか。
+- GASの実行履歴にエラーが表示されていないか。
+
+## 次のStep
+
+LINEから画像を受け取り、Google Driveへ保存できるようになりました。
+
+次は、画像を保存したことをPCへ知らせる仕組みを追加します。
+
+[Step ③：PCへ印刷開始の合図を送る](../step03-pc-notification/README.md)
